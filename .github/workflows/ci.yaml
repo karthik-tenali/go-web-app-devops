@@ -1,4 +1,4 @@
-name: CI
+name: CI (PR Validation)
 
 on:
   pull_request:
@@ -7,26 +7,57 @@ on:
 
 jobs:
   build-test-lint:
+    name: Go Build / Test / Lint
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.22.5'
 
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests
+      - name: Build
+        run: go build ./...
+
+      - name: Test
         run: go test ./...
 
-      - name: Run golangci-lint
+      - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.56.2
           args: --timeout=5m
+
+  docker-build-check:
+    name: Docker Build Validation
+    runs-on: ubuntu-latest
+    needs: build-test-lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker build (no push)
+        run: |
+          docker build -t ci-go-web-image:test .
+
+  helm-validate:
+    name: Helm Lint & Template
+    runs-on: ubuntu-latest
+    needs: docker-build-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm lint
+        run: helm lint go-web-app-helm
+
+      - name: Helm template
+        run: helm template test go-web-app-helm
 
